@@ -140,10 +140,7 @@ public class MNSpain_bot extends TelegramLongPollingBot {
 				poll.peopleVotedUp();//Subimos el conteo de gente que ha votado.				
 			}
 		}
-		poll.sendSurvey(chatId, poll.createSurveyString(poll.updateSurvey(pos)));
-		
-		
-		
+		poll.updateMessage(chatId, poll.createSurveyString(poll.updateSurvey(pos)));
 		
 	}
 	

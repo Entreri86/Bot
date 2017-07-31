@@ -4,6 +4,8 @@ import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
 import org.telegram.telegrambots.api.methods.send.SendMessage;
+import org.telegram.telegrambots.api.methods.updatingmessages.EditMessageReplyMarkup;
+import org.telegram.telegrambots.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.api.objects.Message;
 import org.telegram.telegrambots.api.objects.Update;
 import org.telegram.telegrambots.api.objects.replykeyboard.InlineKeyboardMarkup;
@@ -21,11 +23,14 @@ public class Poll {
 	private int answerOptions;//numero de  preguntas
 	private int [] answerScore;//puntuacion de los votos.
 	private int peopleVoted;
-	private int messageSurveyId;
+	private int messageSurveyId;	
 	private String [] answers;
 	private String [] callBacksData;
 	private String surveyText;
+	private String parseMode = "HTML";
 	private ArrayList <String> survey;
+	private InlineKeyboardMarkup markupInline;
+	
 	
 	public Poll (Update update){
 		this.update = update;
@@ -38,7 +43,7 @@ public class Poll {
 	 * 
 	 * @param position
 	 */
-	public void addPollScore(int position){
+	public synchronized void addPollScore(int position){
 		this.answerScore[position] = this.answerScore[position] + 1;//Aumentamos la puntuacion en 1 en la posicion dada. 
 	}
 	/**
@@ -52,7 +57,7 @@ public class Poll {
 	/**
 	 * 
 	 */
-	public void peopleVotedUp(){
+	public synchronized void peopleVotedUp(){
 		this.peopleVoted = this.peopleVoted + 1; 
 	}
 	/**
@@ -96,7 +101,6 @@ public class Poll {
 	
 	/**
 	 * Metodo encargado de crear la encuesta con los datos enviados por el usuario. 
-	 * 
 	 */
 	public ArrayList<String> createSurvey (){
 		final String mark = "0%";
@@ -109,11 +113,11 @@ public class Poll {
 			answerScore [i] = 0;//Marcamos a 0 las puntuaciones.
 			if (i == 0){
 				surveys.add(survey.get(i));//Primera pos la pregunta.
-			} else {//Si es primo debe de ser una respuesta.
+			} else {//Si es impar debe de ser una respuesta.
 				surveys.add(survey.get(i));//Posible respuesta.
 				answers [count] = survey.get(i);//Guardamos la pregunta para el teclado posterior.
 				surveys.add(Emoji.WHITE_SMALL_SQUARE+"  "+mark);//Marca del porcentaje.EMOJI cuadrado vacio.				
-				count = count +1;
+				count = count + 1;
 			} 
 		}//TODO: Posiciones 0 pregunta y 1,3,5... Respuestas. Los 2,4,6 seran las marcas porcentuales.
 		surveys.add(Emoji.SLEEPY_FACE+" No ha respondido nadie todavía.");
@@ -142,12 +146,13 @@ public class Poll {
 						surveys.add(Emoji.WHITE_SMALL_SQUARE+"  "+mark);//Marca del porcentaje.EMOJI cuadrado vacio.
 					} else{
 						String thumbsUp ="";
+						String finalString = "";
 						for (int j = 0; j< getScore(i/2-1);j++){//Ponemos tantos dedos como votos haya.
 							thumbsUp = thumbsUp+Emoji.THUMBS_UP_SIGN;
 						}
-						thumbsUp = thumbsUp + " " +getPercent(getScore(i/2-1))+percent;//Añadimos el porcentaje en todo caso
+						finalString = thumbsUp + " " +getPercent(getScore(i/2-1))+percent;//Añadimos el porcentaje en todo caso
 						System.out.println("Posicion: "+position+" Porcentaje "+getPercent(getScore(i/2-1))+" Puntuacion de la posicion: "+getScore(i/2-1)+" Personas que han votado: "+peopleVoted);//TODO: FALLO PORCENTAJE segunda vuelta.
-						surveys.add(thumbsUp);//Añadimos a la lista.
+						surveys.add(finalString);//Añadimos a la lista.
 					}
 				}
 			}
@@ -180,8 +185,7 @@ public class Poll {
 			} else{
 				surveyText = surveyText + editedSurvey[i] + jump;//Recogemos el texto en una variable String y le añadimos los saltos para facilitar lectura.	
 			}			
-		}		
-		//TO-DO OKIS!
+		}
 		return surveyText;
 	}
 	
@@ -190,16 +194,15 @@ public class Poll {
 	 * @param chatId Id del chat a donde enviar la encuesta.
 	 * @param textToSend texto de la encuesta a enviar.
 	 */
-	public void sendSurvey (Long chatId, String textToSend){
-		String parseMode = "HTML";
+	public void sendSurvey (Long chatId, String textToSend){		
 		String callBack = "Option";
 		SendMessage message = new SendMessage();//Iniciamos mensaje y String.				
 		message.setChatId(chatId);
 		message.setText(textToSend);
 		message.setParseMode(parseMode);//Asignamos al mensaje el parseador html para la negrita.
 		//Teclado
-		InlineKeyboardMarkup markupInline = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rowsInline = new ArrayList<>();        
+		markupInline = new InlineKeyboardMarkup();
+		List<List<InlineKeyboardButton>> rowsInline = new ArrayList<>();        
         String [] answers = getAnswers();
         callBacksData = new String [getAnswersOptions()];//Iniciamos array para almacenar los callBack
         for (int i =0; i < getAnswersOptions(); i++){
@@ -222,6 +225,51 @@ public class Poll {
         }	
 		
 	}
+	
+	/**
+	 * 
+	 * @param chatId
+	 * @param textToSend
+	 */
+	public void updateMessage (Long chatId,String textToSend){
+		EditMessageText message = new EditMessageText();
+		message.setChatId(chatId);
+		message.setMessageId(messageSurveyId);
+		message.setText(textToSend);
+		message.setParseMode(parseMode);		
+		message.setReplyMarkup(updateKeyboard());//Actualizamos el reply y se lo pasamos.		
+		try {
+			mnsBot.editMessageText(message);
+		} catch (TelegramApiException e) {
+			BotLogger.error(LOGTAG, e);//Guardamos mensaje y lo mostramos en pantalla de la consola.
+            e.printStackTrace();
+		}
+	}
+	
+	/**
+	 * 
+	 * @return
+	 */
+	private InlineKeyboardMarkup updateKeyboard (){
+		String callBack = "Option";
+		InlineKeyboardMarkup markupInline = new InlineKeyboardMarkup();
+		List<List<InlineKeyboardButton>> rowsInline = new ArrayList<>();   
+		for (int i =0; i < getAnswersOptions(); i++){
+			List<InlineKeyboardButton> rowInline = new ArrayList<>();
+        	InlineKeyboardButton button = new InlineKeyboardButton();        	        	
+        	if (answerScore[i] == 0){
+        		button.setText(answers[i]);
+        	} else{
+        		button.setText(answers[i]+" - "+answerScore[i]+" -");
+        	}        	
+        	button.setCallbackData(callBack+i);
+        	rowInline.add(button);        	
+        	callBacksData[i] = callBack + i;
+        	rowsInline.add(rowInline);
+		}
+		markupInline.setKeyboard(rowsInline);
+		return markupInline;
+	}
 	/**
 	 * 
 	 * @param score
@@ -235,9 +283,9 @@ public class Poll {
 	}
 	
 	/**
-	 * Metodo encargado de detectar si un numero dado por parametro es primo.
+	 * Metodo encargado de detectar si un numero dado por parametro es impar.
 	 * @param num numero a inspeccionar.
-	 * @return true en caso de ser primo, false en caso de ser par.
+	 * @return true en caso de ser impar, false en caso de ser par.
 	 */
 	public boolean isOddNumber (int num){
 		if (num%2 !=0){
