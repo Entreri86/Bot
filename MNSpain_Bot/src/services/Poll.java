@@ -3,42 +3,49 @@ package services;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
+
+import org.telegram.telegrambots.api.methods.AnswerInlineQuery;
 import org.telegram.telegrambots.api.methods.send.SendMessage;
 import org.telegram.telegrambots.api.methods.updatingmessages.EditMessageReplyMarkup;
 import org.telegram.telegrambots.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.api.objects.Message;
 import org.telegram.telegrambots.api.objects.Update;
+import org.telegram.telegrambots.api.objects.inlinequery.ChosenInlineQuery;
+import org.telegram.telegrambots.api.objects.inlinequery.InlineQuery;
+import org.telegram.telegrambots.api.objects.inlinequery.inputmessagecontent.InputTextMessageContent;
+import org.telegram.telegrambots.api.objects.inlinequery.result.InlineQueryResult;
+import org.telegram.telegrambots.api.objects.inlinequery.result.InlineQueryResultArticle;
 import org.telegram.telegrambots.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.exceptions.TelegramApiException;
 import org.telegram.telegrambots.logging.BotLogger;
 
+import bot.BotConfig;
 import handlers.MNSpain_bot;
 
-public class Poll {
-
-	private Update update;
-	private MNSpain_bot mnsBot;
+public class Poll {	
+	
 	private static final String LOGTAG = "Poll";
 	private int answerOptions;//numero de  preguntas
 	private int [] answerScore;//puntuacion de los votos.
-	private int peopleVoted;
-	private int messageSurveyId;	
-	private String [] answers;
-	private String [] callBacksData;
-	private String surveyText;
-	private String parseMode = "HTML";
-	private ArrayList <String> survey;
-	private InlineKeyboardMarkup markupInline;
+	private int peopleVoted;//Personas que votan.
+	private int pollID;//Id de la encuesta.	
+	private String [] answers;//Respuestas de la votacion.
+	private String [] callBacksData;//Datos de marca para los botones.
+	private String surveyText;//Testo de la encuesta.
+	public static String parseMode = "HTML";//Parseo HTML
+	private ArrayList <String> survey;//ArrayList con la encuesta.
+	private String finalSurveyText;//Texto final de la encuesta.
 	
-	
-	public Poll (Update update){
-		this.update = update;
+	/**
+	 * 
+	 * 
+	 */
+	public Poll (){		
 		peopleVoted = 0;
-		mnsBot = new MNSpain_bot();
+		pollID = 1;
 		survey = new ArrayList<String>();
-	}
-	
+	}	
 	/**
 	 * 
 	 * @param position
@@ -119,16 +126,16 @@ public class Poll {
 				surveys.add(Emoji.WHITE_SMALL_SQUARE+"  "+mark);//Marca del porcentaje.EMOJI cuadrado vacio.				
 				count = count + 1;
 			} 
-		}//TODO: Posiciones 0 pregunta y 1,3,5... Respuestas. Los 2,4,6 seran las marcas porcentuales.
+		}//TODO: Posiciones 0 pregunta y 1,3,5... Respuestas. Los 2,4,6... seran las marcas porcentuales.
 		surveys.add(Emoji.SLEEPY_FACE+" No ha respondido nadie todavía.");
 		survey.clear();
-		survey.addAll(surveys);//TO-DO OKISSS.		
+		survey.addAll(surveys);	
 		return survey;		
 	}
 	/**
-	 * 
-	 * @param position
-	 * @return
+	 * Metodo encargado de actualizar y devolver la lista de la encuesta con la votacion.
+	 * @param position posicion a actualizar.
+	 * @return Lista con los datos actualizados.
 	 */
 	public ArrayList<String> updateSurvey (int position){
 		ArrayList<String> surveys = new ArrayList<String>();
@@ -156,8 +163,7 @@ public class Poll {
 					}
 				}
 			}
-		}
-				
+		}				
 		surveys.add(Emoji.PENSIVE_FACE+" "+peopleVoted+" personas han votado hasta ahora.");
 		survey.clear();
 		survey.addAll(surveys);
@@ -186,7 +192,57 @@ public class Poll {
 				surveyText = surveyText + editedSurvey[i] + jump;//Recogemos el texto en una variable String y le añadimos los saltos para facilitar lectura.	
 			}			
 		}
+		finalSurveyText = surveyText;//Recogemos el texto para a la hora de compartir la encuesta que no se lie.
 		return surveyText;
+	}
+	/**
+	 * Metodo encargado de enviar al chat privado del usuario con el bot la encuesta para que el usuario la comparta o controle.
+	 * @param chatId id del chat del usuario.
+	 * @param textToSend texto a enviar con la encuesta.
+	 */
+	public SendMessage sendFinishedSurvey (Long chatId, String textToSend){
+		SendMessage message = new SendMessage();//Iniciamos mensaje y String.				
+		message.setChatId(chatId);
+		message.setText(textToSend);
+		message.setParseMode(parseMode);//Asignamos al mensaje el parseador html para la negrita.
+		InlineKeyboardMarkup markupInline = new InlineKeyboardMarkup();
+		List<List<InlineKeyboardButton>> rowsInline = new ArrayList<>();
+		//Primer boton
+		List<InlineKeyboardButton> rowInline = new ArrayList<>();
+    	InlineKeyboardButton shareButton = new InlineKeyboardButton();
+    	shareButton.setText("Publicar encuesta.");    	   	
+    	shareButton.setSwitchInlineQuery("");   	    	
+    	rowInline.add(shareButton);
+    	rowsInline.add(rowInline);
+    	//Segundo boton.
+    	List<InlineKeyboardButton> rowInline2 = new ArrayList<>();
+    	InlineKeyboardButton updateButton = new InlineKeyboardButton();
+    	updateButton.setText("Actualizar resultados");
+    	updateButton.setCallbackData(BotConfig.UPDATE_BUTTON);    	
+    	rowInline2.add(updateButton);
+    	rowsInline.add(rowInline2);
+    	//Añadimos los demas botones en la tercera fila.
+    	List<InlineKeyboardButton> rowInline3 = new ArrayList<>();
+    	for (int i =0; i < 3;i++){    		
+        	InlineKeyboardButton button = new InlineKeyboardButton();
+        	if (i ==0){
+        		button.setText("Votar");
+        		button.setCallbackData(BotConfig.VOTE_BUTTON);
+        		rowInline3.add(button);
+        	} else if (i ==1){
+        		button.setText("Cerrar");
+        		button.setCallbackData(BotConfig.CLOSE_BUTTON);
+        		rowInline3.add(button);
+        	} else if (i == 2){
+        		button.setText("Borrar");
+        		button.setCallbackData(BotConfig.DELETE_BUTTON);
+        		rowInline3.add(button);
+        	}
+    	}
+    	rowsInline.add(rowInline3);
+    	markupInline.setKeyboard(rowsInline);
+    	message.setReplyMarkup(markupInline);
+    	return message;
 	}
 	
 	/**
@@ -194,89 +250,106 @@ public class Poll {
 	 * @param chatId Id del chat a donde enviar la encuesta.
 	 * @param textToSend texto de la encuesta a enviar.
 	 */
-	public void sendSurvey (Long chatId, String textToSend){		
-		String callBack = "Option";
+	public SendMessage sendSurvey (Long chatId, String textToSend){		
 		SendMessage message = new SendMessage();//Iniciamos mensaje y String.				
-		message.setChatId(chatId);
-		message.setText(textToSend);
-		message.setParseMode(parseMode);//Asignamos al mensaje el parseador html para la negrita.
-		//Teclado
-		markupInline = new InlineKeyboardMarkup();
-		List<List<InlineKeyboardButton>> rowsInline = new ArrayList<>();        
-        String [] answers = getAnswers();
-        callBacksData = new String [getAnswersOptions()];//Iniciamos array para almacenar los callBack
-        for (int i =0; i < getAnswersOptions(); i++){
-        	List<InlineKeyboardButton> rowInline = new ArrayList<>();
-        	InlineKeyboardButton button = new InlineKeyboardButton();
-        	button.setText(answers[i]);
-        	button.setCallbackData(callBack+i);
-        	rowInline.add(button);        	
-        	callBacksData[i] = callBack + i;
-        	rowsInline.add(rowInline);            
-        }        
-        markupInline.setKeyboard(rowsInline);
-        message.setReplyMarkup(markupInline);        
-		try {            
-            Message m = mnsBot.sendMessage(message);
-            messageSurveyId = m.getMessageId();//Recogemos el ID del mensaje para poder actualizarlo.            
-        } catch (TelegramApiException e) {
-        	BotLogger.error(LOGTAG, e);//Guardamos mensaje y lo mostramos en pantalla de la consola.
-            e.printStackTrace();
-        }	
+		message.setChatId(chatId);//ID del chat donde se dirige la encuesta.
+		message.setText(textToSend);//Texto a enviar.
+		message.setParseMode(parseMode);//Asignamos al mensaje el parseador html para la negrita.		
+        message.setReplyMarkup(createKeyboard());//Creamos el teclado.        
+		return message;
 		
 	}
 	
 	/**
-	 * 
-	 * @param chatId
-	 * @param textToSend
+	 * Metodo encargado de actualizar la encuesta y su mensaje segun las votaciones.
+	 * @param chatId id del Chat donde se esta utilizando la votacion.
+	 * @param textToSend texto de la encuesta a actualizar.
 	 */
-	public void updateMessage (Long chatId,String textToSend){
-		EditMessageText message = new EditMessageText();
-		message.setChatId(chatId);
-		message.setMessageId(messageSurveyId);
-		message.setText(textToSend);
-		message.setParseMode(parseMode);		
+	public EditMessageText updateMessage (String chatId,String textToSend){
+		EditMessageText message = new EditMessageText();		
+		message.setInlineMessageId(chatId);//ID del mensaje de la InlineQuery.		
+		message.setText(textToSend);//Asignamos texto actualizado
+		message.setParseMode(parseMode);//Parseo HTML		
 		message.setReplyMarkup(updateKeyboard());//Actualizamos el reply y se lo pasamos.		
-		try {
-			mnsBot.editMessageText(message);
-		} catch (TelegramApiException e) {
-			BotLogger.error(LOGTAG, e);//Guardamos mensaje y lo mostramos en pantalla de la consola.
-            e.printStackTrace();
-		}
+		return message;
+	}
+	/**
+	 * Metodo encargado de crear en primera instancia el teclado de la votacion.	 
+	 * @return
+	 */
+	private InlineKeyboardMarkup createKeyboard(){		
+		String callBack = "Option";//Marca de datos.
+		InlineKeyboardMarkup markupInline = new InlineKeyboardMarkup();
+		List<List<InlineKeyboardButton>> rowsInline = new ArrayList<>();        
+        String [] answers = getAnswers();
+        callBacksData = new String [getAnswersOptions()];//Iniciamos array para almacenar los callBack
+        for (int i =0; i < getAnswersOptions(); i++){//Crearemos tantos botones como respuestas haya.
+        	List<InlineKeyboardButton> rowInline = new ArrayList<>();
+        	InlineKeyboardButton button = new InlineKeyboardButton();
+        	button.setText(answers[i]);//Ponemos el texto en el boton.
+        	button.setCallbackData(callBack+i);//Y la marca de datos.
+        	rowInline.add(button);        	
+        	callBacksData[i] = callBack + i;//Guardamos en el array la marca de datos.
+        	rowsInline.add(rowInline);            
+        }        
+        markupInline.setKeyboard(rowsInline);//Asignamos el teclado y devolvemos.		
+		return markupInline;
 	}
 	
 	/**
-	 * 
-	 * @return
+	 * Metodo encargado de gestionar la actualizacion del teclado al realizar votaciones.
+	 * @return InlineKeyboardMarkup teclado con la votacion personalizada.
 	 */
 	private InlineKeyboardMarkup updateKeyboard (){
-		String callBack = "Option";
+		String callBack = "Option";//Marca de datos.
 		InlineKeyboardMarkup markupInline = new InlineKeyboardMarkup();
 		List<List<InlineKeyboardButton>> rowsInline = new ArrayList<>();   
 		for (int i =0; i < getAnswersOptions(); i++){
 			List<InlineKeyboardButton> rowInline = new ArrayList<>();
         	InlineKeyboardButton button = new InlineKeyboardButton();        	        	
-        	if (answerScore[i] == 0){
-        		button.setText(answers[i]);
-        	} else{
-        		button.setText(answers[i]+" - "+answerScore[i]+" -");
+        	if (answerScore[i] == 0){//Si no hay puntuacion en la posicion...
+        		button.setText(answers[i]);//Ponemos el teclado con la respuesta solo...
+        	} else{//Si hay puntuacion...
+        		button.setText(answers[i]+" - "+answerScore[i]+" -");//La ponemos en el teclado.
         	}        	
-        	button.setCallbackData(callBack+i);
-        	rowInline.add(button);        	
+        	button.setCallbackData(callBack+i);//Marcamos el boton con la marca para conocer el boton pulsado.
+        	rowInline.add(button);//Añadimos el boton a la lista.        	
         	callBacksData[i] = callBack + i;
-        	rowsInline.add(rowInline);
+        	rowsInline.add(rowInline);//Añadimos la fila a la lista.
 		}
-		markupInline.setKeyboard(rowsInline);
+		markupInline.setKeyboard(rowsInline);//Asignamos el teclado y devolvemos.
 		return markupInline;
 	}
 	/**
-	 * 
-	 * @param score
-	 * @return
+	 * Metodo que devuelve un objeto InputTextMessageContent con el mensaje de la encuesta.
+	 * @return InputTextMessageContent con el mensaje de la encuesta y el parseo HTML.
+	 */
+	private InputTextMessageContent surveyText(){
+		InputTextMessageContent inputText = new InputTextMessageContent();
+		inputText.setMessageText(finalSurveyText);//Asignamos el texto de la encuesta.		
+		inputText.setParseMode(parseMode);//Parseo HTML.
+		return inputText;
+	}
+	/**
+	 * Metodo encargardo de aunar lo necesario en un objeto InlineQueryResultArticle para contestar a la consulta. 
+	 * @return InlineQueryResultArticle con los datos de la encuesta.
+	 */
+	private InlineQueryResultArticle surveyArticle(){
+		InlineQueryResultArticle article = new InlineQueryResultArticle();
+		article.setInputMessageContent(surveyText());//Asignamos el texto de la encuesta.
+		article.setReplyMarkup(createKeyboard());//Asignamos el teclado de la encuesta.
+		article.setTitle(survey.get(0));//El titulo de la encuesta, que se mostrara en la lista.
+		article.setId("Encuesta"+pollID);//Id de la encuesta.
+		pollID = pollID + 1;//Aumentamos el contador del Id de la encuesta.
+		return article;
+	}
+	/**
+	 * Metodo encargado de devolver en un String el porcentaje correspondiente de la votacion.
+	 * @param score puntuacion de los votos.
+	 * @return String con el porcentaje de votos en la posicion.
 	 */
 	private String getPercent(int score){		
-		double percent = score / peopleVoted * 100;
+		double percent = score / (double) peopleVoted * 100;
 		DecimalFormat format = new DecimalFormat("0.0");
 		String finalPercent = format.format(percent);
 		return finalPercent;
@@ -287,12 +360,23 @@ public class Poll {
 	 * @param num numero a inspeccionar.
 	 * @return true en caso de ser impar, false en caso de ser par.
 	 */
-	public boolean isOddNumber (int num){
+	private boolean isOddNumber (int num){
 		if (num%2 !=0){
 			return true;//es impar
 		} else {
 			return false;//es par
 		}
+	}
+	/**
+	 * Metodo encargado de contestar a la InlineQuery de la encuesta al compartirla.
+	 * @param inlineQuery InlineQuery con los datos de la consulta.
+	 * @return AnswerInlineQuery con la encuesta personalizada.
+	 */
+	public AnswerInlineQuery convertToAnswerInlineQuery (InlineQuery inlineQuery){		
+		AnswerInlineQuery answerInlineQuery = new AnswerInlineQuery();
+		answerInlineQuery.setInlineQueryId(inlineQuery.getId());//Ponemos id de la consulta.
+		answerInlineQuery.setResults(surveyArticle());//Rellenamos la consulta con el resultado.		
+		return answerInlineQuery;
 	}
 	
 }

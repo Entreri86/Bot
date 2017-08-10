@@ -1,8 +1,5 @@
 package handlers;
 
-
-
-
 import org.telegram.telegrambots.api.methods.send.SendMessage;
 import org.telegram.telegrambots.api.objects.Message;
 import org.telegram.telegrambots.api.objects.Update;
@@ -14,35 +11,26 @@ import services.Poll;
 
 
 public class MNSpain_bot extends TelegramLongPollingBot {
-	private static final String LOGTAG = "MNSpain";
-	private static final int DEV_ID = 4764174;
-	private static final String DEV_WORDS = "Hola creador, que necesitas de mi?";	
-	private static final String START_COMMAND = "/start";
-	private static final String HELP_COMMAND = "/help";
-	private static final String POLL_COMMAND = "/poll";
-	private static final String POLL_COMMAND_DONE = "/polldone";
-	private static final String WELCOME_STRING = "Bienvenido al bot de gestión de grupos MNSpain. Este bot te ayudara en"
-			+ " a gestionar tu grupo de Telegram, tu clan de Clash Royale ademas de otras funciones.\nUtiliza el comando /help para"
-			+ " mas información.";
-	private static final String HELP_STRING ="En construcción!";
-	private static final String POLL_STRING = "Creemos la encuesta, primero envie la pregunta.";
-	private static final String POLL_ANSWER_STRING = "Añada una respuesta, cuando haya añadido las respuestas deseadas pulse /polldone.";
-	private static final String POLL_DONE_STRING = "Encuesta finalizada";
+	private static final String LOGTAG = "MNSpain";		
 	private Poll poll;
 	private int pollCount = 1;//Empieza en el 1 por la cuenta de la pregunta.
 	private boolean isPolling = false;
 	private boolean haveQuestion = false;
 	private boolean sendSurvey = false;
 	
+	/**
+	 * Metodo encargado de gestionar y derivar las actualizaciones que le llegan al bot.
+	 */
 	@Override
-	public void onUpdateReceived(Update update) {		
-		
-		if (update.hasMessage() && update.getMessage().isCommand()){
+	public void onUpdateReceived(Update update) {			
+		if (update.hasMessage() && update.getMessage().isCommand()){//Si es un comando...
 			handleCommand(update.getMessage().getText(),update);
-		} else if(update.hasMessage() && update.getMessage().hasText()){
+		} else if(update.hasMessage() && update.getMessage().hasText()){//Si es un mensaje...
 			handleMessage(update.getMessage(), update);
-		} else if (update.hasCallbackQuery()){
+		} else if (update.hasCallbackQuery()){//Si es una pulsacion de boton de un teclado...
 			handleCallbackQuery(update);
+		} else if (update.hasInlineQuery()){//Si es una consulta inline...
+			handleInlineQuery(update);
 		}
 		
 	}
@@ -56,43 +44,42 @@ public class MNSpain_bot extends TelegramLongPollingBot {
 		SendMessage message= new SendMessage();		
 		Long chatId = update.getMessage().getChatId();
 		switch (command){
-		case START_COMMAND:				
-			message.setText(WELCOME_STRING);
+		case BotConfig.START_COMMAND:				
+			message.setText(BotConfig.WELCOME_STRING);
 			break;
-		case HELP_COMMAND:			
-			message.setText(HELP_STRING);
+		case BotConfig.HELP_COMMAND:			
+			message.setText(BotConfig.HELP_STRING);
 			break;
-		case POLL_COMMAND:			
-			message.setText(POLL_STRING);
-			poll = new Poll(update);//Iniciamos la clase...
-			isPolling = true;			
+		case BotConfig.POLL_COMMAND:			
+			message.setText(BotConfig.POLL_STRING);
+			poll = new Poll();//Iniciamos la clase...
+			isPolling = true;//"Encendemos" el modo encuesta.			
 			break;
-		case POLL_COMMAND_DONE:
+		case BotConfig.POLL_COMMAND_DONE:
 			isPolling = false;//Reiniciamos la variable al finalizar el comando.
 			haveQuestion = false;//Reiniciamos la variable para la pregunta.
 			sendSurvey = true;//Marcamos para enviar la encuesta.
 			pollCount = 0;//Reiniciamos contador.			
-			message.setText(POLL_DONE_STRING);
+			message.setText(BotConfig.POLL_DONE_STRING);
 			break;
 		
 		}		
 		try {
 			message.setChatId(chatId);
-            sendMessage(message); // Call method to send the message
-            if (sendSurvey == true){
-            	poll.sendSurvey(chatId,poll.createSurveyString(poll.createSurvey()));//Si hay que enviar la encuesta...
+			execute(message);//Enviamos el mensaje...            
+            if (sendSurvey == true){            	
+            	execute(poll.sendFinishedSurvey(chatId, poll.createSurveyString(poll.createSurvey())));//Enviamos encuesta antes de compartir.
             	sendSurvey = false;//Marcamos como no enviada despues de haberlo hecho.
             }
         } catch (TelegramApiException e) {
         	BotLogger.error(LOGTAG, e);//Guardamos mensaje y lo mostramos en pantalla de la consola.
             e.printStackTrace();
         }
-	}
-	
+	}	
 	/**
-	 * 
-	 * @param message
-	 * @param update
+	 * Metodo encargado de gestionar los mensajes que llegan al bot.
+	 * @param message Mensaje del chat.
+	 * @param update actualizacion de estado.
 	 */
 	private void handleMessage (Message message, Update update){
 		SendMessage sendMessage = new SendMessage();
@@ -101,49 +88,71 @@ public class MNSpain_bot extends TelegramLongPollingBot {
 			if (haveQuestion == false){//Si es falso todavia no se ha asignado la pregunta...
 				poll.setQuestion(message.getText());//Asignamos	la pregunta.			
 				sendMessage.setChatId(chatId);
-				sendMessage.setText("Pregunta añadida. "+POLL_ANSWER_STRING);
+				sendMessage.setParseMode(Poll.parseMode);
+				sendMessage.setText(BotConfig.POLL_QUESTION_STRING+ message.getText() +BotConfig.POLL_FIRST_ANSWER_STRING);
 				haveQuestion = true;//Marcamos que hay pregunta.
 			} else {//En este estado tenemos la pregunta, asignamos las respuestas.
 				poll.setAnswers(message.getText(),pollCount);
 				pollCount += 1;
 				sendMessage.setChatId(chatId);
-				sendMessage.setText(POLL_ANSWER_STRING);
+				sendMessage.setText(BotConfig.POLL_ANSWER_STRING);
 			}			
-		} else if(update.getMessage().getFrom().getId() != null){
+		} else if(update.getMessage().getFrom().getId() != null){//Si el id del usuario no es null...
 			Integer id = update.getMessage().getFrom().getId();
-			if (id == DEV_ID){
+			if (id == BotConfig.DEV_ID){//Si es mi id...
 				sendMessage.setChatId(chatId);
-				sendMessage.setText(DEV_WORDS);
+				sendMessage.setText(BotConfig.DEV_WORDS);//Mensaje personalizado...xD
 			}	
-		} else {
+		} else {//Sino respondemos con el mismo texto enviado por el usuario.
 			sendMessage.setChatId(chatId);
 			sendMessage.setText(update.getMessage().getText());
 		}        		
-        try {
-        	
-            sendMessage(sendMessage); // Call method to send the message
+        try {        	
+            execute(sendMessage);//Enviamos mensaje. 
         } catch (TelegramApiException e) {
         	BotLogger.error(LOGTAG, e);//Guardamos mensaje y lo mostramos en pantalla de la consola.
             e.printStackTrace();
         }
 	}
 	
-	private void handleCallbackQuery (Update update){
-		Long chatId = update.getCallbackQuery().getMessage().getChatId();
-		String call_data = update.getCallbackQuery().getData();
-		String [] callBackData = poll.getCallBacksData();
+	/**
+	 * Metodo encargado de gestionar las CallBackQueries que puedan llegar al bot.
+	 * @param update actualizacion del estado.
+	 */
+	private void handleCallbackQuery (Update update){		
+		String chatId = update.getCallbackQuery().getInlineMessageId();//Id del chat.
+		Integer userId = update.getCallbackQuery().getFrom().getId();//Id del usuario a controlar!!!
+		String call_data = update.getCallbackQuery().getData();//Datos del boton pulsado.
+		String [] callBackData = poll.getCallBacksData();//Recogemos los datos de marca de los botones.
+		//System.out.println(call_data);
+		//System.out.println(callBackData[0]);		
 		int pos = 0;
-		for (int i = 0; i < poll.getAnswersOptions(); i++){
-			if (callBackData [i].equals(call_data)){
+		for (int i = 0; i < poll.getAnswersOptions(); i++){//Recorremos todos los botones para conocer el pulsado.
+			if (callBackData [i].equals(call_data)){				
 				pos = i;//Guardamos la posicion.
-				poll.addPollScore(pos);//Aumentamos la puntuacion.
+				poll.addPollScore(pos);//Aumentamos la puntuacion en la posicion dada.
 				poll.peopleVotedUp();//Subimos el conteo de gente que ha votado.				
 			}
 		}
-		poll.updateMessage(chatId, poll.createSurveyString(poll.updateSurvey(pos)));
-		
+		try {			
+			execute(poll.updateMessage(chatId, poll.createSurveyString(poll.updateSurvey(pos))));//Actualizamos la encuesta.						
+		} catch (TelegramApiException e) {
+			BotLogger.error(LOGTAG, e);//Guardamos mensaje y lo mostramos en pantalla de la consola.
+			e.printStackTrace();
+		}				
 	}
-	
+	/**
+	 * Metodo encargado de gestionar las InlineQueries.
+	 * @param update actualizacion del estado.
+	 */
+	private void handleInlineQuery (Update update){
+		try {
+			execute(poll.convertToAnswerInlineQuery(update.getInlineQuery()));//Contestamos a la inlineQuery compartiendo la encuesta.				
+		} catch (TelegramApiException e) {
+			BotLogger.error(LOGTAG, e);//Guardamos mensaje y lo mostramos en pantalla de la consola.
+			e.printStackTrace();
+		}
+	}
 	/**
 	 * Metodo que devuelve el nombre del bot dado a Botfather.
 	 */
