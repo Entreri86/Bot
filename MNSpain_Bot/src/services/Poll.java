@@ -2,29 +2,22 @@ package services;
 
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
+import org.telegram.telegrambots.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.api.methods.AnswerInlineQuery;
 import org.telegram.telegrambots.api.methods.send.SendMessage;
-import org.telegram.telegrambots.api.methods.updatingmessages.EditMessageReplyMarkup;
 import org.telegram.telegrambots.api.methods.updatingmessages.EditMessageText;
-import org.telegram.telegrambots.api.objects.Message;
-import org.telegram.telegrambots.api.objects.Update;
-import org.telegram.telegrambots.api.objects.inlinequery.ChosenInlineQuery;
 import org.telegram.telegrambots.api.objects.inlinequery.InlineQuery;
 import org.telegram.telegrambots.api.objects.inlinequery.inputmessagecontent.InputTextMessageContent;
-import org.telegram.telegrambots.api.objects.inlinequery.result.InlineQueryResult;
 import org.telegram.telegrambots.api.objects.inlinequery.result.InlineQueryResultArticle;
 import org.telegram.telegrambots.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.api.objects.replykeyboard.buttons.InlineKeyboardButton;
-import org.telegram.telegrambots.exceptions.TelegramApiException;
-import org.telegram.telegrambots.logging.BotLogger;
-
+import com.vdurmont.emoji.EmojiParser;
 import bot.BotConfig;
-import handlers.MNSpain_bot;
 
 public class Poll {	
-	
 	private static final String LOGTAG = "Poll";
 	private int answerOptions;//numero de  preguntas
 	private int [] answerScore;//puntuacion de los votos.
@@ -34,7 +27,8 @@ public class Poll {
 	private String [] callBacksData;//Datos de marca para los botones.
 	private String surveyText;//Testo de la encuesta.
 	public static String parseMode = "HTML";//Parseo HTML
-	private ArrayList <String> survey;//ArrayList con la encuesta.
+	private ArrayList <String> survey;//ArrayList con la encuesta.	
+	private HashMap <Integer, Integer> usersIdPos;//HashMap con clave userID y la posicion de voto.
 	private String finalSurveyText;//Texto final de la encuesta.
 	
 	/**
@@ -44,14 +38,52 @@ public class Poll {
 	public Poll (){		
 		peopleVoted = 0;
 		pollID = 1;
-		survey = new ArrayList<String>();
+		survey = new ArrayList<String>();		
+		usersIdPos = new HashMap<Integer,Integer>();
 	}	
 	/**
 	 * 
 	 * @param position
 	 */
-	public synchronized void addPollScore(int position){
-		this.answerScore[position] = this.answerScore[position] + 1;//Aumentamos la puntuacion en 1 en la posicion dada. 
+	public synchronized void addPollScore(int position,Integer userId){
+		this.answerScore[position] = this.answerScore[position] + 1;//Aumentamos la puntuacion en 1 en la posicion dada.
+		if (isOnList(userId)){//Si esta en la lista esta cambiando el voto...
+			usersIdPos.replace(userId, position);//Cambiamos la posicion en el HashMap.
+		} else{
+			peopleVotedUp();//Subimos el conteo de gente que ha votado.
+			insertUserOnList(userId,position);//Metemos al usuario en la lista de votaciones con la posicion votada.
+		}		
+	}
+	/**
+	 * 
+	 * @param userId
+	 */
+	public synchronized void reducePollScore (Integer userId){
+		int position = getPollPosition(userId);
+		this.answerScore[position] = this.answerScore[position] - 1;//Reducimos la puntuacion en 1 en la posicion dada.
+	}
+	/**
+	 * 
+	 * @param userId
+	 * @return
+	 */
+	private Integer getPollPosition (Integer userId){
+		Integer positionValue = usersIdPos.get(userId);
+		return positionValue;
+	}
+	/**
+	 * 
+	 * @param callBackData
+	 * @return
+	 */
+	public Integer getCallbackPos (String callBackData){
+		int pos = 0;
+		for (int i = 0; i < answerOptions; i++){//Recorremos todos los botones para conocer el pulsado.
+			if (callBacksData[i].equals(callBackData)){				
+				pos = i;//Guardamos la posicion.											
+			}
+		}
+		return pos;
 	}
 	/**
 	 * 
@@ -64,7 +96,7 @@ public class Poll {
 	/**
 	 * 
 	 */
-	public synchronized void peopleVotedUp(){
+	private void peopleVotedUp(){
 		this.peopleVoted = this.peopleVoted + 1; 
 	}
 	/**
@@ -102,14 +134,22 @@ public class Poll {
 	 * @param answer respuesta a tratar.
 	 * @param position posicion del array donde se aloja la respuesta.
 	 */
-	public void setAnswers (String answer, int position){
+	public void setAnswers (String answer){
 		this.survey.add(answer);
+	}
+	/**
+	 * 
+	 * @param userId
+	 */
+	private void insertUserOnList (Integer userId,Integer pos){
+		this.usersIdPos.put(userId, pos);
 	}
 	
 	/**
 	 * Metodo encargado de crear la encuesta con los datos enviados por el usuario. 
 	 */
 	public ArrayList<String> createSurvey (){
+		final String emojiCry = EmojiParser.parseToUnicode(":cry:");
 		final String mark = "0%";
 		int count = 0;
 		ArrayList<String> surveys = new ArrayList<String>();
@@ -121,13 +161,14 @@ public class Poll {
 			if (i == 0){
 				surveys.add(survey.get(i));//Primera pos la pregunta.
 			} else {//Si es impar debe de ser una respuesta.
+				String emojiWhiteSquare = EmojiParser.parseToUnicode(":white_medium_square:");
 				surveys.add(survey.get(i));//Posible respuesta.
 				answers [count] = survey.get(i);//Guardamos la pregunta para el teclado posterior.
-				surveys.add(Emoji.WHITE_SMALL_SQUARE+"  "+mark);//Marca del porcentaje.EMOJI cuadrado vacio.				
+				surveys.add(emojiWhiteSquare+"  "+mark);//Marca del porcentaje.EMOJI cuadrado vacio.				
 				count = count + 1;
 			} 
-		}//TODO: Posiciones 0 pregunta y 1,3,5... Respuestas. Los 2,4,6... seran las marcas porcentuales.
-		surveys.add(Emoji.SLEEPY_FACE+" No ha respondido nadie todavía.");
+		}//Posiciones 0 pregunta y 1,3,5... Respuestas. Los 2,4,6... seran las marcas porcentuales.		
+		surveys.add(emojiCry+" No ha respondido nadie todavía.");
 		survey.clear();
 		survey.addAll(surveys);	
 		return survey;		
@@ -149,22 +190,24 @@ public class Poll {
 				if (isOddNumber(i)){//si es impar
 					surveys.add(survey.get(i));//respuesta
 				} else{ //si es par... tiene que haber marca porcentual.
-					if (getScore(i/2-1) == 0){
-						surveys.add(Emoji.WHITE_SMALL_SQUARE+"  "+mark);//Marca del porcentaje.EMOJI cuadrado vacio.
+					if (getScore(i/2-1) == 0){						
+						String emojiWhiteSquare = EmojiParser.parseToUnicode(":white_medium_square:");
+						surveys.add(emojiWhiteSquare+"  "+mark);//Marca del porcentaje. EMOJI cuadrado vacio.
 					} else{
+						String emojiThumbsUp = EmojiParser.parseToUnicode(":thumbsup:");
 						String thumbsUp ="";
 						String finalString = "";
 						for (int j = 0; j< getScore(i/2-1);j++){//Ponemos tantos dedos como votos haya.
-							thumbsUp = thumbsUp+Emoji.THUMBS_UP_SIGN;
+							thumbsUp = thumbsUp+emojiThumbsUp;
 						}
-						finalString = thumbsUp + " " +getPercent(getScore(i/2-1))+percent;//Añadimos el porcentaje en todo caso
-						System.out.println("Posicion: "+position+" Porcentaje "+getPercent(getScore(i/2-1))+" Puntuacion de la posicion: "+getScore(i/2-1)+" Personas que han votado: "+peopleVoted);//TODO: FALLO PORCENTAJE segunda vuelta.
+						finalString = thumbsUp + " " +getPercent(getScore(i/2-1))+percent;//Añadimos el porcentaje en todo caso						
 						surveys.add(finalString);//Añadimos a la lista.
 					}
 				}
 			}
-		}				
-		surveys.add(Emoji.PENSIVE_FACE+" "+peopleVoted+" personas han votado hasta ahora.");
+		}		
+		String emojiPeopleVoted = EmojiParser.parseToUnicode(":busts_in_silhouette:");
+		surveys.add(emojiPeopleVoted+" "+peopleVoted+" personas han votado hasta ahora.");
 		survey.clear();
 		survey.addAll(surveys);
 		//3 respuestas 15 votos, 1 => 3 votos = 20%, 2 => 7 votos =46,6% , 3 => 5 = 33,3% votos. % = votos / totalVotado * 100
@@ -344,6 +387,30 @@ public class Poll {
 		return article;
 	}
 	/**
+	 * Metodo encargado de contestar a la InlineQuery de la encuesta al compartirla.
+	 * @param inlineQuery InlineQuery con los datos de la consulta.
+	 * @return AnswerInlineQuery con la encuesta personalizada.
+	 */
+	public AnswerInlineQuery convertToAnswerInlineQuery (InlineQuery inlineQuery){		
+		AnswerInlineQuery answerInlineQuery = new AnswerInlineQuery();
+		answerInlineQuery.setInlineQueryId(inlineQuery.getId());//Ponemos id de la consulta.
+		answerInlineQuery.setResults(surveyArticle());//Rellenamos la consulta con el resultado.		
+		return answerInlineQuery;
+	}
+	/**
+	 * 
+	 * @param callBackId
+	 * @param text
+	 * @return
+	 */
+	public AnswerCallbackQuery replyVote (String callBackId, String text){
+		AnswerCallbackQuery acq = new AnswerCallbackQuery();
+		acq.setCallbackQueryId(callBackId);
+		acq.setShowAlert(true);
+		acq.setText(text);
+		return acq;
+	}
+	/**
 	 * Metodo encargado de devolver en un String el porcentaje correspondiente de la votacion.
 	 * @param score puntuacion de los votos.
 	 * @return String con el porcentaje de votos en la posicion.
@@ -368,15 +435,16 @@ public class Poll {
 		}
 	}
 	/**
-	 * Metodo encargado de contestar a la InlineQuery de la encuesta al compartirla.
-	 * @param inlineQuery InlineQuery con los datos de la consulta.
-	 * @return AnswerInlineQuery con la encuesta personalizada.
+	 * Metodo encargado de comprobar el Id del usuario dado por parametro en la lista de usuarios.
+	 * @param userId Id del usuario a comprobar
+	 * @return true si el usuario esta en la lista.
 	 */
-	public AnswerInlineQuery convertToAnswerInlineQuery (InlineQuery inlineQuery){		
-		AnswerInlineQuery answerInlineQuery = new AnswerInlineQuery();
-		answerInlineQuery.setInlineQueryId(inlineQuery.getId());//Ponemos id de la consulta.
-		answerInlineQuery.setResults(surveyArticle());//Rellenamos la consulta con el resultado.		
-		return answerInlineQuery;
+	public boolean isOnList (Integer userId){		
+		if (usersIdPos.containsKey(userId)){
+			return true;
+		} else {
+			return false;
+		}
 	}
 	
 }

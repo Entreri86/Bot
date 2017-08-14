@@ -12,8 +12,7 @@ import services.Poll;
 
 public class MNSpain_bot extends TelegramLongPollingBot {
 	private static final String LOGTAG = "MNSpain";		
-	private Poll poll;
-	private int pollCount = 1;//Empieza en el 1 por la cuenta de la pregunta.
+	private Poll poll;	
 	private boolean isPolling = false;
 	private boolean haveQuestion = false;
 	private boolean sendSurvey = false;
@@ -58,8 +57,7 @@ public class MNSpain_bot extends TelegramLongPollingBot {
 		case BotConfig.POLL_COMMAND_DONE:
 			isPolling = false;//Reiniciamos la variable al finalizar el comando.
 			haveQuestion = false;//Reiniciamos la variable para la pregunta.
-			sendSurvey = true;//Marcamos para enviar la encuesta.
-			pollCount = 0;//Reiniciamos contador.			
+			sendSurvey = true;//Marcamos para enviar la encuesta.				
 			message.setText(BotConfig.POLL_DONE_STRING);
 			break;
 		
@@ -92,8 +90,7 @@ public class MNSpain_bot extends TelegramLongPollingBot {
 				sendMessage.setText(BotConfig.POLL_QUESTION_STRING+ message.getText() +BotConfig.POLL_FIRST_ANSWER_STRING);
 				haveQuestion = true;//Marcamos que hay pregunta.
 			} else {//En este estado tenemos la pregunta, asignamos las respuestas.
-				poll.setAnswers(message.getText(),pollCount);
-				pollCount += 1;
+				poll.setAnswers(message.getText());				
 				sendMessage.setChatId(chatId);
 				sendMessage.setText(BotConfig.POLL_ANSWER_STRING);
 			}			
@@ -122,24 +119,33 @@ public class MNSpain_bot extends TelegramLongPollingBot {
 	private void handleCallbackQuery (Update update){		
 		String chatId = update.getCallbackQuery().getInlineMessageId();//Id del chat.
 		Integer userId = update.getCallbackQuery().getFrom().getId();//Id del usuario a controlar!!!
-		String call_data = update.getCallbackQuery().getData();//Datos del boton pulsado.
-		String [] callBackData = poll.getCallBacksData();//Recogemos los datos de marca de los botones.
-		//System.out.println(call_data);
-		//System.out.println(callBackData[0]);		
-		int pos = 0;
-		for (int i = 0; i < poll.getAnswersOptions(); i++){//Recorremos todos los botones para conocer el pulsado.
-			if (callBackData [i].equals(call_data)){				
-				pos = i;//Guardamos la posicion.
-				poll.addPollScore(pos);//Aumentamos la puntuacion en la posicion dada.
-				poll.peopleVotedUp();//Subimos el conteo de gente que ha votado.				
+		System.out.println("ID del usuario a controlar: "+userId);
+		String call_data = update.getCallbackQuery().getData();//Datos del boton pulsado.		
+		boolean isOnList = poll.isOnList(userId);//Miramos si el usuario esta en la lista.
+		if (isOnList){//Si esta en la lista de votos...
+			try {
+				int pos = poll.getCallbackPos(call_data);//Recogemos la posicion del boton pulsado.				
+				poll.reducePollScore(userId);//Reducimos el voto introducido anteriormente.
+				poll.addPollScore(pos, userId);//Ponemos el voto en la posicion nueva.
+				String text = "Cambio de voto registrado correctamente.";
+				execute(poll.replyVote(update.getCallbackQuery().getId(),text));//Mensaje informativo...
+				execute(poll.updateMessage(chatId, poll.createSurveyString(poll.updateSurvey(pos))));//Actualizamos la encuesta.
+			} catch (TelegramApiException e) {
+				BotLogger.error(LOGTAG, e);//Guardamos mensaje y lo mostramos en pantalla de la consola.
+				e.printStackTrace();
 			}
-		}
-		try {			
-			execute(poll.updateMessage(chatId, poll.createSurveyString(poll.updateSurvey(pos))));//Actualizamos la encuesta.						
-		} catch (TelegramApiException e) {
-			BotLogger.error(LOGTAG, e);//Guardamos mensaje y lo mostramos en pantalla de la consola.
-			e.printStackTrace();
-		}				
+		} else {//Si no ha votado todavia...
+			int pos = poll.getCallbackPos(call_data);//Recogemos la posicion del boton pulsado.			
+			poll.addPollScore(pos,userId);//Aumentamos la puntuacion en la posicion dada.
+			try {
+				String text = "Voto registrado correctamente.";
+				execute(poll.replyVote(update.getCallbackQuery().getId(),text));//Mensaje informativo...
+				execute(poll.updateMessage(chatId, poll.createSurveyString(poll.updateSurvey(pos))));//Actualizamos la encuesta.						
+			} catch (TelegramApiException e) {
+				BotLogger.error(LOGTAG, e);//Guardamos mensaje y lo mostramos en pantalla de la consola.
+				e.printStackTrace();
+			}	
+		}		
 	}
 	/**
 	 * Metodo encargado de gestionar las InlineQueries.
@@ -167,7 +173,5 @@ public class MNSpain_bot extends TelegramLongPollingBot {
 	@Override
 	public String getBotToken() {		
 		return BotConfig.BOT_TOKEN;
-	}
-	
-	
+	}	
 }
