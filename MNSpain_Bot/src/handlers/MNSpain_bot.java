@@ -1,11 +1,13 @@
 package handlers;
 
 import org.telegram.telegrambots.api.methods.send.SendMessage;
+import org.telegram.telegrambots.api.methods.updatingmessages.DeleteMessage;
 import org.telegram.telegrambots.api.objects.Message;
 import org.telegram.telegrambots.api.objects.Update;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.exceptions.TelegramApiException;
 import org.telegram.telegrambots.logging.BotLogger;
+import com.vdurmont.emoji.EmojiParser;
 import bot.BotConfig;
 import services.Poll;
 
@@ -16,7 +18,8 @@ public class MNSpain_bot extends TelegramLongPollingBot {
 	private boolean isPolling = false;
 	private boolean haveQuestion = false;
 	private boolean sendSurvey = false;
-	
+	private boolean isClosed = false;
+	//private Integer messageId;
 	/**
 	 * Metodo encargado de gestionar y derivar las actualizaciones que le llegan al bot.
 	 */
@@ -27,11 +30,15 @@ public class MNSpain_bot extends TelegramLongPollingBot {
 		} else if(update.hasMessage() && update.getMessage().hasText()){//Si es un mensaje...
 			handleMessage(update.getMessage(), update);
 		} else if (update.hasCallbackQuery()){//Si es una pulsacion de boton de un teclado...
-			handleCallbackQuery(update);
+			try {
+				handleCallbackQuery(update);
+			} catch (TelegramApiException e) {
+				BotLogger.error(LOGTAG, e);//Guardamos mensaje y lo mostramos en pantalla de la consola.
+				e.printStackTrace();
+			}
 		} else if (update.hasInlineQuery()){//Si es una consulta inline...
 			handleInlineQuery(update);
-		}
-		
+		}		
 	}
 	
 	/**
@@ -66,6 +73,7 @@ public class MNSpain_bot extends TelegramLongPollingBot {
 			message.setChatId(chatId);
 			execute(message);//Enviamos el mensaje...            
             if (sendSurvey == true){            	
+            	
             	execute(poll.sendFinishedSurvey(chatId, poll.createSurveyString(poll.createSurvey())));//Enviamos encuesta antes de compartir.
             	sendSurvey = false;//Marcamos como no enviada despues de haberlo hecho.
             }
@@ -115,37 +123,110 @@ public class MNSpain_bot extends TelegramLongPollingBot {
 	/**
 	 * Metodo encargado de gestionar las CallBackQueries que puedan llegar al bot.
 	 * @param update actualizacion del estado.
+	 * @throws TelegramApiException 
 	 */
-	private void handleCallbackQuery (Update update){		
-		String chatId = update.getCallbackQuery().getInlineMessageId();//Id del chat.
-		Integer userId = update.getCallbackQuery().getFrom().getId();//Id del usuario a controlar!!!
-		System.out.println("ID del usuario a controlar: "+userId);
+	private void handleCallbackQuery (Update update) throws TelegramApiException{		
+		String chatId = update.getCallbackQuery().getInlineMessageId();//Id del chat.		
+		Integer userId = update.getCallbackQuery().getFrom().getId();//Id del usuario a controlar!!!		
+		String callBackId = update.getCallbackQuery().getId();//Id de la callbackQuery.		
 		String call_data = update.getCallbackQuery().getData();//Datos del boton pulsado.		
 		boolean isOnList = poll.isOnList(userId);//Miramos si el usuario esta en la lista.
-		if (isOnList){//Si esta en la lista de votos...
-			try {
-				int pos = poll.getCallbackPos(call_data);//Recogemos la posicion del boton pulsado.				
-				poll.reducePollScore(userId);//Reducimos el voto introducido anteriormente.
-				poll.addPollScore(pos, userId);//Ponemos el voto en la posicion nueva.
-				String text = "Cambio de voto registrado correctamente.";
-				execute(poll.replyVote(update.getCallbackQuery().getId(),text));//Mensaje informativo...
-				execute(poll.updateMessage(chatId, poll.createSurveyString(poll.updateSurvey(pos))));//Actualizamos la encuesta.
-			} catch (TelegramApiException e) {
-				BotLogger.error(LOGTAG, e);//Guardamos mensaje y lo mostramos en pantalla de la consola.
-				e.printStackTrace();
+		if (isClosed){//Si la votacion esta cerrada...
+			Integer buttonPos = poll.getKeyBoardPos(call_data);//Comprobamos que sean botones del chat privado..
+			if (buttonPos == null){//Si ha pulsado un boton de voto de la votacion estando cerrada...
+				String text = "La votación esta cerrada "+EmojiParser.parseToUnicode(":tired_face:")+".";
+				execute(poll.replyVote(callBackId,text));//Mensaje informativo...
+			} else{//Si ha pulsado alguno de los 4 botones del chat privado con el bot (el de compartir va a parte).
+				String text;//Cadena para las contestaciones.
+				Integer messageId;
+				Long privateChatId;
+				switch (buttonPos){
+				    case 1://Boton de actualizar.
+				    	messageId = update.getCallbackQuery().getMessage().getMessageId();//Recogemos el id del mensaje del chat.
+				    	privateChatId = update.getCallbackQuery().getMessage().getChatId();//Y el id del chat.
+				    	execute(poll.updatePrivateMessage(privateChatId,messageId, poll.createSurveyString(poll.getFinalSurveyText())));
+				    	break;
+				    case 2://Boton de abrir votacion.
+				    	isClosed = false;//Cambiamos valor para abrir la votacion.
+				    	text = "Votación abierta! "+ EmojiParser.parseToUnicode(":wink:")+".";
+				    	execute(poll.replyVote(callBackId,text));//Mensaje informativo...
+				    	break;
+				    case 3://Boton de cerrar votacion
+				    	text = "La votación ya esta cerrada! "+ EmojiParser.parseToUnicode(":customs:")+".";
+				    	execute(poll.replyVote(callBackId,text));//Mensaje informativo...
+				    	break;
+				    case 4://Boton de borrado de votacion.
+				    	messageId = update.getCallbackQuery().getMessage().getMessageId();//Recogemos el id del mensaje del chat.
+				    	privateChatId = update.getCallbackQuery().getMessage().getChatId();//Y el id del chat.
+				    	execute (new DeleteMessage(privateChatId,messageId));//Borramos el mensaje
+				    	text = "Votación eliminada! "+ EmojiParser.parseToUnicode(":see_no_evil:")+".";
+				    	execute(poll.replyVote(callBackId,text));//Mensaje informativo...
+				    	break;
+				}
 			}
-		} else {//Si no ha votado todavia...
-			int pos = poll.getCallbackPos(call_data);//Recogemos la posicion del boton pulsado.			
-			poll.addPollScore(pos,userId);//Aumentamos la puntuacion en la posicion dada.
-			try {
-				String text = "Voto registrado correctamente.";
-				execute(poll.replyVote(update.getCallbackQuery().getId(),text));//Mensaje informativo...
-				execute(poll.updateMessage(chatId, poll.createSurveyString(poll.updateSurvey(pos))));//Actualizamos la encuesta.						
-			} catch (TelegramApiException e) {
-				BotLogger.error(LOGTAG, e);//Guardamos mensaje y lo mostramos en pantalla de la consola.
-				e.printStackTrace();
-			}	
-		}		
+		} else{//Si la votacion esta abierta...
+			Integer buttonPos = poll.getKeyBoardPos(call_data);
+			if (buttonPos == null){//Si no ha pulsado ninguno de los botones del chat privado...							
+				if (isOnList){//Si esta en la lista de votos...
+					try {
+						int pos = poll.getCallbackPos(call_data);//Recogemos la posicion del boton pulsado.
+						int prevPos = poll.getPollPosition(userId);//Recogemos la posicion que voto anteriormente.
+						if (pos == prevPos){//Ya ha votado en esa posicion.
+							String text = "Ya has votado en esta posicion "+ EmojiParser.parseToUnicode(":tired_face:")+".";
+							execute(poll.replyVote(callBackId,text));//Mensaje informativo...
+						} else {//Esta cambiando el voto.
+							poll.reducePollScore(userId);//Reducimos el voto introducido anteriormente.
+							poll.addPollScore(pos, userId);//Ponemos el voto en la posicion nueva.
+							String text = "Cambio de voto registrado correctamente "+EmojiParser.parseToUnicode(":wink:")+".";
+							execute(poll.replyVote(callBackId,text));//Mensaje informativo...
+							execute(poll.updateMessage(chatId, poll.createSurveyString(poll.updateSurvey(pos))));//Actualizamos la encuesta.
+						}				
+					} catch (TelegramApiException e) {
+						BotLogger.error(LOGTAG, e);//Guardamos mensaje y lo mostramos en pantalla de la consola.
+						e.printStackTrace();
+					}
+				} else {//Si no ha votado todavia...
+					int pos = poll.getCallbackPos(call_data);//Recogemos la posicion del boton pulsado.			
+					poll.addPollScore(pos,userId);//Aumentamos la puntuacion en la posicion dada.
+					try {
+						String text = "Voto registrado correctamente "+EmojiParser.parseToUnicode(":wink:")+".";
+						execute(poll.replyVote(callBackId,text));//Mensaje informativo...
+						execute(poll.updateMessage(chatId, poll.createSurveyString(poll.updateSurvey(pos))));//Actualizamos la encuesta.						
+					} catch (TelegramApiException e) {
+						BotLogger.error(LOGTAG, e);//Guardamos mensaje y lo mostramos en pantalla de la consola.
+						e.printStackTrace();
+					}	
+				}		
+			} else{//Si ha pulsado algun boton del chat privado estando abierta la votacion...
+				String text;//Cadena para las contestaciones.
+				Integer messageId;
+				Long privateChatId;
+				switch (buttonPos){
+				    case 1://Boton de actualizar.				 			    	
+				    	messageId = update.getCallbackQuery().getMessage().getMessageId();//Recogemos el id del mensaje del chat.
+				    	privateChatId = update.getCallbackQuery().getMessage().getChatId();//Y el id del chat.
+				    	execute(poll.updatePrivateMessage(privateChatId,messageId, poll.createSurveyString(poll.getFinalSurveyText())));
+				    	break;
+				    case 2://Boton de abrir votacion.				    	
+				    	text = "La votación ya esta abierta! "+ EmojiParser.parseToUnicode(":wink:")+".";
+				    	execute(poll.replyVote(callBackId,text));//Mensaje informativo...
+				    	break;
+				    case 3://Boton de cerrar votacion
+				    	isClosed = true;//Cerramos la votacion.
+				    	text = "Votación cerrada! "+ EmojiParser.parseToUnicode(":customs:")+".";
+				    	execute(poll.replyVote(callBackId,text));//Mensaje informativo...
+				    	break;
+				    case 4://Boton de borrado de votacion.
+				    	messageId = update.getCallbackQuery().getMessage().getMessageId();//Recogemos el id del mensaje del chat.
+				    	privateChatId = update.getCallbackQuery().getMessage().getChatId();//Y el id del chat.
+				    	execute (new DeleteMessage(privateChatId,messageId));
+				    	text = "Votación eliminada! "+ EmojiParser.parseToUnicode(":see_no_evil:")+".";
+				    	execute(poll.replyVote(callBackId,text));//Mensaje informativo...
+				    	break;
+				}
+			}
+		}
+		
 	}
 	/**
 	 * Metodo encargado de gestionar las InlineQueries.

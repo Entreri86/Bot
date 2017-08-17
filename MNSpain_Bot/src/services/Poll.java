@@ -4,7 +4,6 @@ import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-
 import org.telegram.telegrambots.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.api.methods.AnswerInlineQuery;
 import org.telegram.telegrambots.api.methods.send.SendMessage;
@@ -26,11 +25,10 @@ public class Poll {
 	private String [] answers;//Respuestas de la votacion.
 	private String [] callBacksData;//Datos de marca para los botones.
 	private String surveyText;//Testo de la encuesta.
-	public static String parseMode = "HTML";//Parseo HTML
+	public static String parseMode = "HTML";//Parseo HTML	
 	private ArrayList <String> survey;//ArrayList con la encuesta.	
 	private HashMap <Integer, Integer> usersIdPos;//HashMap con clave userID y la posicion de voto.
-	private String finalSurveyText;//Texto final de la encuesta.
-	
+	private String finalSurveyText;//Texto final de la encuesta.	
 	/**
 	 * 
 	 * 
@@ -40,10 +38,17 @@ public class Poll {
 		pollID = 1;
 		survey = new ArrayList<String>();		
 		usersIdPos = new HashMap<Integer,Integer>();
-	}	
+	}
 	/**
-	 * 
-	 * @param position
+	 * Metodo encargado de retornar el ArrayList con la pregunta y las respuestas de la encuesta.
+	 * @return ArrayList <String> con la pregunta y las respuestas.
+	 */
+	public ArrayList <String> getFinalSurveyText (){
+		return this.survey;
+	}
+	/**
+	 * Metodo encargado de aumentar la votacion dada.
+	 * @param position posicion donde aumentar la puntuacion de voto.
 	 */
 	public synchronized void addPollScore(int position,Integer userId){
 		this.answerScore[position] = this.answerScore[position] + 1;//Aumentamos la puntuacion en 1 en la posicion dada.
@@ -55,26 +60,26 @@ public class Poll {
 		}		
 	}
 	/**
-	 * 
-	 * @param userId
+	 * Metodo encargado de anular la votacion dada anteriormente por el usuario.
+	 * @param userId id del usuario a tratar.
 	 */
 	public synchronized void reducePollScore (Integer userId){
 		int position = getPollPosition(userId);
 		this.answerScore[position] = this.answerScore[position] - 1;//Reducimos la puntuacion en 1 en la posicion dada.
 	}
 	/**
-	 * 
-	 * @param userId
-	 * @return
+	 * Metodo encargado de retornar la posicion que ha votado el usuario en el map.
+	 * @param userId id del usuario que ha votado.
+	 * @return Posicion de voto en el teclado.
 	 */
-	private Integer getPollPosition (Integer userId){
+	public Integer getPollPosition (Integer userId){
 		Integer positionValue = usersIdPos.get(userId);
 		return positionValue;
 	}
 	/**
-	 * 
-	 * @param callBackData
-	 * @return
+	 * Metodo encargado de comprobar que boton a sido pulsado y retornar su pulsacion.
+	 * @param callBackData datos del boton pulsado para la comprobacion.
+	 * @return numero con la posicion del boton pulsado.
 	 */
 	public Integer getCallbackPos (String callBackData){
 		int pos = 0;
@@ -84,43 +89,39 @@ public class Poll {
 			}
 		}
 		return pos;
+	}	
+	/**
+	 * Metodo encargado de retornar un numero Integer segun la posicion pulsada en el teclado.
+	 * @param callBackData Datos a comprobar de la pulsacion dada por el usuario.
+	 * @return Numero Integer del 1 al 4 o null en caso de no ser ninguna de las opciones.
+	 */
+	public Integer getKeyBoardPos (String callBackData){
+		switch (callBackData){
+		    case BotConfig.UPDATE_BUTTON:
+		    	return 1;		    	
+		    case BotConfig.VOTE_BUTTON:
+		    	return 2;
+		    case BotConfig.CLOSE_BUTTON:
+		    	return 3;
+		    case BotConfig.DELETE_BUTTON:
+		    	return 4;
+		}
+		return null;
 	}
 	/**
-	 * 
-	 * @param position
-	 * @return
+	 * Metodo encargado de retornar la puntuacion dada segun la posicion.
+	 * @param position posicion a aumentar el conteo de puntuacion.
+	 * @return puntuacion dada segun la posicion.
 	 */
-	public int getScore (int position){
+	private int getScore (int position){
 		return this.answerScore[position];
 	}
 	/**
-	 * 
+	 * Metodo encargado de aumentar el contador de personas que han votado.
 	 */
 	private void peopleVotedUp(){
 		this.peopleVoted = this.peopleVoted + 1; 
-	}
-	/**
-	 * 
-	 * @return
-	 */
-	public String [] getCallBacksData(){
-		return this.callBacksData;
-	}
-	/**
-	 * 
-	 * @return
-	 */
-	public int getAnswersOptions (){
-		return this.answerOptions;
-	}
-	/**
-	 * 
-	 * @return
-	 */
-	public String [] getAnswers (){
-		return this.answers;
-	}
-	
+	}	
 	/**
 	 * Metodo encargado de asignar la pregunta de la encuesta.
 	 * @param question pregunta a tratar.
@@ -138,13 +139,12 @@ public class Poll {
 		this.survey.add(answer);
 	}
 	/**
-	 * 
-	 * @param userId
+	 * Metodo que inserta el usuario en el HashMap con la posición de su voto.
+	 * @param userId Id del usuario que introducir en el Map.
 	 */
 	private void insertUserOnList (Integer userId,Integer pos){
 		this.usersIdPos.put(userId, pos);
-	}
-	
+	}	
 	/**
 	 * Metodo encargado de crear la encuesta con los datos enviados por el usuario. 
 	 */
@@ -213,9 +213,6 @@ public class Poll {
 		//3 respuestas 15 votos, 1 => 3 votos = 20%, 2 => 7 votos =46,6% , 3 => 5 = 33,3% votos. % = votos / totalVotado * 100
 		return survey;
 	}
-	
-	
-	
 	/**
 	 * Metodo encargado de convertir el ArrayList de la encuesta en un String personalizado.
 	 * @param survey encuesta a convertir.
@@ -247,44 +244,8 @@ public class Poll {
 		SendMessage message = new SendMessage();//Iniciamos mensaje y String.				
 		message.setChatId(chatId);
 		message.setText(textToSend);
-		message.setParseMode(parseMode);//Asignamos al mensaje el parseador html para la negrita.
-		InlineKeyboardMarkup markupInline = new InlineKeyboardMarkup();
-		List<List<InlineKeyboardButton>> rowsInline = new ArrayList<>();
-		//Primer boton
-		List<InlineKeyboardButton> rowInline = new ArrayList<>();
-    	InlineKeyboardButton shareButton = new InlineKeyboardButton();
-    	shareButton.setText("Publicar encuesta.");    	   	
-    	shareButton.setSwitchInlineQuery("");   	    	
-    	rowInline.add(shareButton);
-    	rowsInline.add(rowInline);
-    	//Segundo boton.
-    	List<InlineKeyboardButton> rowInline2 = new ArrayList<>();
-    	InlineKeyboardButton updateButton = new InlineKeyboardButton();
-    	updateButton.setText("Actualizar resultados");
-    	updateButton.setCallbackData(BotConfig.UPDATE_BUTTON);    	
-    	rowInline2.add(updateButton);
-    	rowsInline.add(rowInline2);
-    	//Añadimos los demas botones en la tercera fila.
-    	List<InlineKeyboardButton> rowInline3 = new ArrayList<>();
-    	for (int i =0; i < 3;i++){    		
-        	InlineKeyboardButton button = new InlineKeyboardButton();
-        	if (i ==0){
-        		button.setText("Votar");
-        		button.setCallbackData(BotConfig.VOTE_BUTTON);
-        		rowInline3.add(button);
-        	} else if (i ==1){
-        		button.setText("Cerrar");
-        		button.setCallbackData(BotConfig.CLOSE_BUTTON);
-        		rowInline3.add(button);
-        	} else if (i == 2){
-        		button.setText("Borrar");
-        		button.setCallbackData(BotConfig.DELETE_BUTTON);
-        		rowInline3.add(button);
-        	}
-    	}
-    	rowsInline.add(rowInline3);
-    	markupInline.setKeyboard(rowsInline);
-    	message.setReplyMarkup(markupInline);
+		message.setParseMode(parseMode);//Asignamos al mensaje el parseador html para la negrita.		
+    	message.setReplyMarkup(createPrivateKeyboard());//Creamos el teclado personalizado.
     	return message;
 	}
 	
@@ -316,17 +277,76 @@ public class Poll {
 		message.setReplyMarkup(updateKeyboard());//Actualizamos el reply y se lo pasamos.		
 		return message;
 	}
+	
+	/**
+	 * Metodo encargado de actualizar el mensaje privado enviado al chat del usuario.
+	 * @param chatId Id del chat a donde enviar el mensaje.
+	 * @param messageId Id del mensaje a actualizar.
+	 * @param textToSend Texto a enviar en el mensaje.
+	 * @return EditMessageText con el mensaje personalizado.
+	 */
+	public EditMessageText updatePrivateMessage (Long chatId,Integer messageId, String textToSend){
+		EditMessageText message = new EditMessageText();		
+		message.setMessageId(messageId);
+		message.setChatId(chatId);
+		message.setText(textToSend);//Asignamos texto actualizado
+		message.setParseMode(parseMode);//Parseo HTML		
+		message.setReplyMarkup(createPrivateKeyboard());//Actualizamos el reply y se lo pasamos.		
+		return message;
+	}
+	/**
+	 * Metodo encargado de crear el teclado en el chat privado con el usuario.
+	 * @return InlineKeyboardMarkup personalizado para controlar la encuesta.
+	 */
+	private InlineKeyboardMarkup createPrivateKeyboard (){
+		InlineKeyboardMarkup markupInline = new InlineKeyboardMarkup();
+		List<List<InlineKeyboardButton>> rowsInline = new ArrayList<>();
+		//Primer boton
+		List<InlineKeyboardButton> rowInline = new ArrayList<>();
+    	InlineKeyboardButton shareButton = new InlineKeyboardButton();
+    	shareButton.setText("Compartir encuesta.");    	   	
+    	shareButton.setSwitchInlineQuery("");   	    	
+    	rowInline.add(shareButton);
+    	rowsInline.add(rowInline);
+    	//Segundo boton.
+    	List<InlineKeyboardButton> rowInline2 = new ArrayList<>();
+    	InlineKeyboardButton updateButton = new InlineKeyboardButton();
+    	updateButton.setText("Actualizar resultados");
+    	updateButton.setCallbackData(BotConfig.UPDATE_BUTTON);    	
+    	rowInline2.add(updateButton);
+    	rowsInline.add(rowInline2);
+    	//Añadimos los demas botones en la tercera fila.
+    	List<InlineKeyboardButton> rowInline3 = new ArrayList<>();
+    	for (int i =0; i < 3;i++){    		
+        	InlineKeyboardButton button = new InlineKeyboardButton();
+        	if (i ==0){
+        		button.setText("Votar");
+        		button.setCallbackData(BotConfig.VOTE_BUTTON);
+        		rowInline3.add(button);
+        	} else if (i ==1){
+        		button.setText("Cerrar");
+        		button.setCallbackData(BotConfig.CLOSE_BUTTON);
+        		rowInline3.add(button);
+        	} else if (i == 2){
+        		button.setText("Borrar");
+        		button.setCallbackData(BotConfig.DELETE_BUTTON);
+        		rowInline3.add(button);
+        	}
+    	}
+    	rowsInline.add(rowInline3);
+    	markupInline.setKeyboard(rowsInline);
+    	return markupInline;
+	}
 	/**
 	 * Metodo encargado de crear en primera instancia el teclado de la votacion.	 
-	 * @return
+	 * @return InlineKeyboardMarkup teclado con la votacion personalizada.
 	 */
 	private InlineKeyboardMarkup createKeyboard(){		
 		String callBack = "Option";//Marca de datos.
 		InlineKeyboardMarkup markupInline = new InlineKeyboardMarkup();
 		List<List<InlineKeyboardButton>> rowsInline = new ArrayList<>();        
-        String [] answers = getAnswers();
-        callBacksData = new String [getAnswersOptions()];//Iniciamos array para almacenar los callBack
-        for (int i =0; i < getAnswersOptions(); i++){//Crearemos tantos botones como respuestas haya.
+        callBacksData = new String [answerOptions];//Iniciamos array para almacenar los callBack
+        for (int i =0; i < answerOptions; i++){//Crearemos tantos botones como respuestas haya.
         	List<InlineKeyboardButton> rowInline = new ArrayList<>();
         	InlineKeyboardButton button = new InlineKeyboardButton();
         	button.setText(answers[i]);//Ponemos el texto en el boton.
@@ -347,7 +367,7 @@ public class Poll {
 		String callBack = "Option";//Marca de datos.
 		InlineKeyboardMarkup markupInline = new InlineKeyboardMarkup();
 		List<List<InlineKeyboardButton>> rowsInline = new ArrayList<>();   
-		for (int i =0; i < getAnswersOptions(); i++){
+		for (int i =0; i < answerOptions; i++){
 			List<InlineKeyboardButton> rowInline = new ArrayList<>();
         	InlineKeyboardButton button = new InlineKeyboardButton();        	        	
         	if (answerScore[i] == 0){//Si no hay puntuacion en la posicion...
@@ -398,15 +418,15 @@ public class Poll {
 		return answerInlineQuery;
 	}
 	/**
-	 * 
-	 * @param callBackId
-	 * @param text
-	 * @return
+	 * Metodo encargado de gestionar la contestacion a un voto o cambio de voto.
+	 * @param callBackId Id de la llamada al boton.
+	 * @param text Texto a mostrar en la alerta
+	 * @return Contestacion personalizada.
 	 */
 	public AnswerCallbackQuery replyVote (String callBackId, String text){
 		AnswerCallbackQuery acq = new AnswerCallbackQuery();
 		acq.setCallbackQueryId(callBackId);
-		acq.setShowAlert(true);
+		acq.setShowAlert(true);		
 		acq.setText(text);
 		return acq;
 	}
